@@ -1,0 +1,21 @@
+{
+  "name": "WanSwap-farm",
+  "version": "1.0.0",
+  "license": "MIT",
+  "dependencies": {
+    "@openzeppelin/contracts": "^3.1.0",
+    "@openzeppelin/test-helpers": "^0.5.9",
+    "solidity-coverage": "0.7.4",
+    "truffle": "5.1.22",
+    "truffle-flattener": "^1.4.4",
+    "truffle-plugin-verify": "^0.4.0",
+    "truffle-privatekey-provider": "^1.5.0",
+    "wanchain-truffle-sdk": "^1.0.0"
+  },
+  "scripts": {
+    "compile": "truffle compile",
+    "test": "truffle test",
+    "migrate": "truffle migrate",
+    "coverage": "truffle run coverage"
+  }
+}
