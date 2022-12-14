@@ -1,22 +1,14 @@
 # WanSwapFarm 🏵
 
-https://wanswapfarm.finance  Feel free to read the code. More details coming soon.
+https://wanswap.finance/#/farm  Feel free to read the code. More details coming soon.
 
 ## Deployed Contracts / Hash
 
 **Mainnet**
 
-- WaspToken:
+- WaspToken: 0x8B9F9f4aA70B1B0d586BE8aDFb19c1Ac38e05E9a
 
-- WanSwapFarm:
-
-**Rinkeby**
-
-- WaspToken:
-    https://rinkeby.etherscan.io/token/0xB725F5a9bD51610Eaf020Bc14bBa458c44A427e8
-
-- WanSwapFarm:
-    https://rinkeby.etherscan.io/address/0xA386f8ecc1997D51dD53D2dbcb6E562c40A6d5C0
+- WanSwapFarm: 0x7E5fE1e587A5c38B4A4A9ba38a35096F8EA35aaC
 
 ## License
 
