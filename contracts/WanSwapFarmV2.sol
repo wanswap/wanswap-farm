@@ -170,7 +170,7 @@ contract WanSwapFarm is Ownable, ReentrancyGuard {
         }
         uint256 multiplier = getMultiplier(pool.lastRewardTimestamp, block.timestamp);
         uint256 waspReward = multiplier.mul(waspPerSecond).mul(pool.allocPoint).div(totalAllocPoint);
-        wasp.mint(devaddr, waspReward.div(20));
+        wasp.mint(devaddr, waspReward.div(10));
         wasp.mint(address(this), waspReward);
         pool.accWaspPerShare = pool.accWaspPerShare.add(waspReward.mul(1e12).div(lpSupply));
         pool.lastRewardTimestamp = block.timestamp;
