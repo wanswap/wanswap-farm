@@ -2,9 +2,11 @@
 pragma solidity 0.6.12;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract Converter is Ownable {
+    using SafeERC20 for IERC20;
     address public oldWASP;
     address public newWASP;
 
@@ -18,29 +20,22 @@ contract Converter is Ownable {
         toOldWaspEnabled = true;
     }
 
-    function convert(uint256 _amount) external {
-        require(toNewWaspEnabled, "Converter: toNewWasp is disabled");
-        IERC20(oldWASP).transferFrom(msg.sender, address(this), _amount);
-        IERC20(newWASP).transfer(msg.sender, _amount);
-    }
-
     function convertAll() external {
-        require(toNewWaspEnabled, "Converter: toNewWasp is disabled");
+        require(toNewWaspEnabled, "Converter: Not allowed to convert to new WASP");
         uint256 balance = IERC20(oldWASP).balanceOf(msg.sender);
-        IERC20(oldWASP).transferFrom(msg.sender, address(this), balance);
-        IERC20(newWASP).transfer(msg.sender, balance);
+        deposit(balance);
     }
 
-    function deposit(uint256 _amount) external {
-        require(toNewWaspEnabled, "Converter: toNewWasp is disabled");
-        IERC20(oldWASP).transferFrom(msg.sender, address(this), _amount);
-        IERC20(newWASP).transfer(msg.sender, _amount);
+    function deposit(uint256 _amount) public {
+        require(toNewWaspEnabled, "Converter: Not allowed to convert to new WASP");
+        IERC20(oldWASP).safeTransferFrom(msg.sender, address(this), _amount);
+        IERC20(newWASP).safeTransfer(msg.sender, _amount);
     }
 
     function withdraw(uint256 _amount) external {
-        require(toOldWaspEnabled, "Converter: toOldWasp is disabled");
-        IERC20(newWASP).transferFrom(msg.sender, address(this), _amount);
-        IERC20(oldWASP).transfer(msg.sender, _amount);
+        require(toOldWaspEnabled, "Converter: Not allowed to convert to old WASP");
+        IERC20(newWASP).safeTransferFrom(msg.sender, address(this), _amount);
+        IERC20(oldWASP).safeTransfer(msg.sender, _amount);
     }
 
     function enableToNewWasp() external onlyOwner {
