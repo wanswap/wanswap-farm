@@ -7,8 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/EnumerableSet.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "./WaspTokenV2.sol";
+import "./WaspToken.sol";
 
 
 
@@ -19,7 +18,7 @@ import "./WaspTokenV2.sol";
 // distributed and the community can show to govern itself.
 //
 // Have fun reading it. Hopefully it's bug-free. God bless.
-contract WanSwapFarm is Ownable, ReentrancyGuard {
+contract WanSwapFarm is Ownable {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
@@ -34,7 +33,7 @@ contract WanSwapFarm is Ownable, ReentrancyGuard {
         //   pending reward = (user.amount * pool.accWaspPerShare) - user.rewardDebt
         //
         // Whenever a user deposits or withdraws LP tokens to a pool. Here's what happens:
-        //   1. The pool's `accWaspPerShare` (and `lastRewardTimestamp`) gets updated.
+        //   1. The pool's `accWaspPerShare` (and `lastRewardBlock`) gets updated.
         //   2. User receives the pending reward sent to his/her address.
         //   3. User's `amount` gets updated.
         //   4. User's `rewardDebt` gets updated.
@@ -44,18 +43,24 @@ contract WanSwapFarm is Ownable, ReentrancyGuard {
     struct PoolInfo {
         IERC20 lpToken;           // Address of LP token contract.
         uint256 allocPoint;       // How many allocation points assigned to this pool. WASPs to distribute per block.
-        uint256 lastRewardTimestamp;  // Last block number that WASPs distribution occurs.
+        uint256 lastRewardBlock;  // Last block number that WASPs distribution occurs.
         uint256 accWaspPerShare;  // Accumulated WASPs per share, times 1e12. See below.
     }
 
     // The WASP TOKEN!
-    WaspTokenV2 public wasp;
+    WaspToken public wasp;
     // Dev address.
     address public devaddr;
-    // Timestamp when all reward ends.
-    uint256 public allEndTime;
+    // Block number when test WASP period ends.
+    uint256 public testEndBlock;
+    // Block number when bonus WASP period ends.
+    uint256 public bonusEndBlock;
+    // Block number when bonus WASP period ends.
+    uint256 public allEndBlock;
     // WASP tokens created per block.
-    uint256 public waspPerSecond;
+    uint256 public waspPerBlock;
+    // Bonus muliplier for early wasp makers.
+    uint256 public constant BONUS_MULTIPLIER = 5;
 
     // Info of each pool.
     PoolInfo[] public poolInfo;
@@ -63,25 +68,29 @@ contract WanSwapFarm is Ownable, ReentrancyGuard {
     mapping (uint256 => mapping (address => UserInfo)) public userInfo;
     // Total allocation poitns. Must be the sum of all allocation points in all pools.
     uint256 public totalAllocPoint = 0;
-    // The timestamp when WASP mining starts.
-    uint256 public startTime;
+    // The block number when WASP mining starts.
+    uint256 public startBlock;
 
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
     event EmergencyWithdraw(address indexed user, uint256 indexed pid, uint256 amount);
 
     constructor(
-        WaspTokenV2 _wasp,
+        WaspToken _wasp,
         address _devaddr,
-        uint256 _waspPerSecond,
-        uint256 _startTime,
-        uint256 _allEndTime
+        uint256 _waspPerBlock,
+        uint256 _startBlock,
+        uint256 _testEndBlock,
+        uint256 _bonusEndBlock,
+        uint256 _allEndBlock
     ) public {
         wasp = _wasp;
         devaddr = _devaddr;
-        waspPerSecond = _waspPerSecond;
-        startTime = _startTime;
-        allEndTime = _allEndTime;
+        waspPerBlock = _waspPerBlock;
+        startBlock = _startBlock;
+        testEndBlock = _testEndBlock;
+        bonusEndBlock = _bonusEndBlock;
+        allEndBlock = _allEndBlock;
     }
 
     function poolLength() external view returns (uint256) {
@@ -94,12 +103,12 @@ contract WanSwapFarm is Ownable, ReentrancyGuard {
         if (_withUpdate) {
             massUpdatePools();
         }
-        uint256 lastRewardTimestamp = block.timestamp > startTime ? block.timestamp : startTime;
+        uint256 lastRewardBlock = block.number > startBlock ? block.number : startBlock;
         totalAllocPoint = totalAllocPoint.add(_allocPoint);
         poolInfo.push(PoolInfo({
             lpToken: _lpToken,
             allocPoint: _allocPoint,
-            lastRewardTimestamp: lastRewardTimestamp,
+            lastRewardBlock: lastRewardBlock,
             accWaspPerShare: 0
         }));
     }
@@ -113,25 +122,41 @@ contract WanSwapFarm is Ownable, ReentrancyGuard {
         poolInfo[_pid].allocPoint = _allocPoint;
     }
 
-    // Return reward multiplier over the given _from to _to timestamp.
+    // Return reward multiplier over the given _from to _to block.
     function getMultiplier(uint256 _from, uint256 _to) public view returns (uint256) {
-        if (_from >= allEndTime) {
+        if (_from >= allEndBlock) {
             return 0;
         }
 
         uint256 noRewardCount = 0;
-        if (_to >= allEndTime) {
-            noRewardCount = _to.sub(allEndTime);
+        if (_to >= allEndBlock) {
+            noRewardCount = _to.sub(allEndBlock);
         }
 
-        if (_from < startTime) {
-            if (_to < startTime) {
-                return 0;
-            } else {
-                return _to.sub(startTime).sub(noRewardCount);
-            }
-        } else {
+        if (_to <= bonusEndBlock && _from >= testEndBlock) {
+            return _to.sub(_from).mul(BONUS_MULTIPLIER);
+        }
+
+        if (_from >= bonusEndBlock || _to <= testEndBlock) {
             return _to.sub(_from).sub(noRewardCount);
+        }
+
+        if (_from <= testEndBlock && _to >= bonusEndBlock) {
+            return testEndBlock.sub(_from).add(
+                _to.sub(bonusEndBlock).add(
+                    bonusEndBlock.sub(testEndBlock).mul(BONUS_MULTIPLIER)
+                )
+            ).sub(noRewardCount);
+        }
+
+        if (_from <= testEndBlock && _to <= bonusEndBlock) {
+            return testEndBlock.sub(_from).add(
+                _to.sub(testEndBlock).mul(BONUS_MULTIPLIER)
+            );
+        } else { //(_from <= bonusEndBlock && _to >= bonusEndBlock)
+            return bonusEndBlock.sub(_from).mul(BONUS_MULTIPLIER).add(
+                _to.sub(bonusEndBlock)
+            ).sub(noRewardCount);
         }
     }
 
@@ -141,9 +166,9 @@ contract WanSwapFarm is Ownable, ReentrancyGuard {
         UserInfo storage user = userInfo[_pid][_user];
         uint256 accWaspPerShare = pool.accWaspPerShare;
         uint256 lpSupply = pool.lpToken.balanceOf(address(this));
-        if (block.timestamp > pool.lastRewardTimestamp && lpSupply != 0) {
-            uint256 multiplier = getMultiplier(pool.lastRewardTimestamp, block.timestamp);
-            uint256 waspReward = multiplier.mul(waspPerSecond).mul(pool.allocPoint).div(totalAllocPoint);
+        if (block.number > pool.lastRewardBlock && lpSupply != 0) {
+            uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
+            uint256 waspReward = multiplier.mul(waspPerBlock).mul(pool.allocPoint).div(totalAllocPoint);
             accWaspPerShare = accWaspPerShare.add(waspReward.mul(1e12).div(lpSupply));
         }
         return user.amount.mul(accWaspPerShare).div(1e12).sub(user.rewardDebt);
@@ -160,24 +185,24 @@ contract WanSwapFarm is Ownable, ReentrancyGuard {
     // Update reward variables of the given pool to be up-to-date.
     function updatePool(uint256 _pid) public {
         PoolInfo storage pool = poolInfo[_pid];
-        if (block.timestamp <= pool.lastRewardTimestamp) {
+        if (block.number <= pool.lastRewardBlock) {
             return;
         }
         uint256 lpSupply = pool.lpToken.balanceOf(address(this));
         if (lpSupply == 0) {
-            pool.lastRewardTimestamp = block.timestamp;
+            pool.lastRewardBlock = block.number;
             return;
         }
-        uint256 multiplier = getMultiplier(pool.lastRewardTimestamp, block.timestamp);
-        uint256 waspReward = multiplier.mul(waspPerSecond).mul(pool.allocPoint).div(totalAllocPoint);
+        uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
+        uint256 waspReward = multiplier.mul(waspPerBlock).mul(pool.allocPoint).div(totalAllocPoint);
         wasp.mint(devaddr, waspReward.div(10));
         wasp.mint(address(this), waspReward);
         pool.accWaspPerShare = pool.accWaspPerShare.add(waspReward.mul(1e12).div(lpSupply));
-        pool.lastRewardTimestamp = block.timestamp;
+        pool.lastRewardBlock = block.number;
     }
 
     // Deposit LP tokens to WanSwapFarm for WASP allocation.
-    function deposit(uint256 _pid, uint256 _amount) external nonReentrant {
+    function deposit(uint256 _pid, uint256 _amount) public {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         updatePool(_pid);
@@ -194,7 +219,7 @@ contract WanSwapFarm is Ownable, ReentrancyGuard {
     }
 
     // Withdraw LP tokens from WanSwapFarm.
-    function withdraw(uint256 _pid, uint256 _amount) external nonReentrant {
+    function withdraw(uint256 _pid, uint256 _amount) public {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         updatePool(_pid);
@@ -207,7 +232,7 @@ contract WanSwapFarm is Ownable, ReentrancyGuard {
     }
 
     // Withdraw without caring about rewards. EMERGENCY ONLY.
-    function emergencyWithdraw(uint256 _pid) external nonReentrant {
+    function emergencyWithdraw(uint256 _pid) public {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         uint256 amount = user.amount;
